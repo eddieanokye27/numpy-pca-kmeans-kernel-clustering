@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.optimize import minimize
 from scipy.special import logsumexp
+from scipy.spatial.distance import cdist
 from A3helpers import augmentX, gaussKernel, plotModel, generateData, plotPoints
 
 
@@ -148,3 +149,69 @@ def synClsExperimentsPCA():
     test_acc_avg = np.mean(test_acc, axis=2)
 
     return train_acc_avg, test_acc_avg
+
+#q3
+#a
+def kmeans(X, k, max_iter=1000):
+    n, d = X.shape
+    assert max_iter > 0 and k < n
+    randIndx = np.random.choice(n, k, replace=False)
+    U = X[randIndx].copy()
+    for _ in range(max_iter):
+        D = cdist(X, U, metric="sqeuclidean")
+        cluster_idx = np.argmin(D, axis=1)
+        Y = np.zeros((n, k), dtype=int)
+        Y[np.arange(n), cluster_idx] = 1
+        old_U = U.copy()
+        Y_pinv = np.linalg.pinv(Y)
+        U = Y_pinv @ X
+        if np.allclose(old_U, U):
+            break
+    obj_val = (0.5 / n) * np.sum(D.min(axis=1))
+    return Y, U, obj_val
+
+
+#b
+def repeatKmeans(X, k, n_runs=100):
+    best_obj = float("inf")
+    Y_best, U_best = None, None
+    for _ in range(n_runs):
+        Y, U, obj = kmeans(X, k)
+        if obj < best_obj:
+            best_obj = obj
+            Y_best = Y
+            U_best = U
+    return Y_best, U_best, best_obj
+
+
+#c
+def chooseK(X, k_candidates=[2, 3, 4, 5, 6, 7, 8, 9]):
+    obj_vals = []
+    for k in k_candidates:
+        _, _, obj = repeatKmeans(X, k)
+        obj_vals.append(obj)
+    return obj_vals
+
+
+#d
+def kernelKmeans(X, kernel_func, k, init_Y, max_iter=1000):
+    n, d = X.shape
+    assert max_iter > 0 and k < n
+    K = kernel_func(X, X)
+    Y = init_Y.copy()
+    for _ in range(max_iter):
+        old_Y = Y.copy()
+        Y_pinv = np.linalg.pinv(Y)
+        M = Y_pinv @ K @ Y_pinv.T
+        diag_M = np.diag(M)
+        term1 = np.diag(K).reshape(-1, 1)
+        term2 = diag_M.reshape(1, -1)
+        term3 = 2 * (K @ Y_pinv.T)
+        D = term1 + term2 - term3
+        idx = np.argmin(D, axis=1)
+        Y = np.zeros((n, k), dtype=int)
+        Y[np.arange(n), idx] = 1
+        if np.allclose(Y, old_Y):
+            break
+    obj_val = (0.5 / n) * np.sum(np.min(D, axis=1))
+    return Y, obj_val
